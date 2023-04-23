@@ -6,12 +6,19 @@ Date: 4/20/2023
 
 
 // Download RTClib by Adafruit
-#include <Wire.h>
+// Download DHTLib by Rob Tillaart
+// Download LiquidCrystal by Arduino, Adafruit
+//#include <Wire.h>
 #include "RTClib.h"
 #include <Stepper.h>
-
+#include <LiquidCrystal.h>
+#include <dht.h>
 
 // Function declarations
+void disabled();
+void idle();
+void running();
+void error();
 void change_state(unsigned char);
 void print_time();
 void change_stepper_direction();
@@ -19,6 +26,9 @@ void adc_init();
 unsigned int adc_read(unsigned char);
 bool check_water_level();
 void led_toggle();
+void display_LCD(float, float);
+bool reset_button();
+bool stop_button();
 void U0init(unsigned long);
 void print_char(unsigned char);
 void print_string(String);
@@ -37,7 +47,6 @@ volatile unsigned char *pin_e = (unsigned char *) 0x20;
 volatile unsigned char *ddr_e = (unsigned char *) 0x21;
 volatile unsigned char *port_e = (unsigned char *) 0x22;
 
-
 // Analog
 volatile unsigned char* my_ADMUX = (unsigned char*) 0x7C;
 volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
@@ -48,8 +57,16 @@ volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 const int stepsPerRevolution = 2038;
 Stepper my_stepper = Stepper(stepsPerRevolution, 7, 5 ,6, 4);
 
+
+
 // Real time clock
 RTC_DS1307 rtc;
+
+// LCD
+LiquidCrystal lcd(8, 7, 6, 5, 4, 3);
+
+// DHT
+DHT dht(2, DHT11);
 
 // char for printing purposes
 unsigned char state;
@@ -242,6 +259,41 @@ void led_toggle(){
     
     break;    
   }
+}
+
+void display_LCD(float top, float bottom){
+  lcd.setCursor(0,0);
+  lcd.print("Hum: ");
+  lcd.print(top);
+  lcd.setCursor(0,1);
+  lcd.print("Temp: ");
+  lcd.print(bottom);
+}
+
+
+bool reset_button(){
+
+  // Button
+  if((*pinb & 0b00000001) == 0b00000001)
+  {
+    // Pressed
+    return true;
+  }
+  // Not pressed
+  return false;
+}
+
+bool stop_button(){
+
+  // Button
+  if((*pinb & 0b00000010) == 0b00000010)
+  {
+    // Pressed
+    return true;
+  }
+
+  // Not pressed
+  return false;
 }
 
 
