@@ -6,10 +6,11 @@ Date: 4/20/2023
 
 /*
 use ISR interrupt as stated in rubric
-check pin values match physical pins
+  check pin values match physical pins
 check state conditions with rubric
 check print time works
-
+check ddr binary math (does equal delete old values)
+can we use delay?? MOST LIKELY NOT
 */
 
 
@@ -35,6 +36,7 @@ void adc_init();
 unsigned int adc_read(unsigned char);
 bool check_water_level();
 void led_toggle();
+void toggle_fan(bool);
 void display_LCD(float, float);
 bool reset_button();
 bool stop_button();
@@ -56,11 +58,11 @@ volatile unsigned char* port_k = (unsigned char*) 0x108;
 volatile unsigned char* ddr_k = (unsigned char*) 0x107;
 volatile unsigned char* pin_k = (unsigned char*) 0x106;
 
-// (PB7, PB6; Pin 13, Pin 12)
-volatile unsigned char *pin_b = (unsigned char *) 0x23;
-volatile unsigned char *ddr_b = (unsigned char *) 0x24;
-volatile unsigned char *port_b = (unsigned char *) 0x25;
-
+// Fan Motor (PF0, PF1; A0, A1)
+// Water Sensor (PF2, PF3; A2, A3)
+volatile unsigned char *port_f = (unsigned char *) 0x31;
+volatile unsigned char *ddr_f = (unsigned char *) 0x30;
+volatile unsigned char *pin_f = (unsigned char *) 0x2F;
 
 // Analog
 volatile unsigned char* my_ADMUX = (unsigned char*) 0x7C;
@@ -106,7 +108,15 @@ void setup() {
   *ddr_k |= 0b00001111;
 
   // Buttons in input mode
-  *ddr_k &= 0b11100000;
+  *ddr_k &= 0b01110000;
+
+  // Water Sensor power pin in output mode
+  // Fan in output mode
+  *ddr_f |= 0b00000111;
+
+
+  // Water Sensor data pin in input mode
+  *ddr_k &= ~(0x01 << 3);
 
 
   // DHT
@@ -193,7 +203,7 @@ void print_time(){
 void change_stepper_direction(){
 
   // Wait for button input??
-  if((*pin_k & (0x01 << 6)){
+  if(*pin_k & (0x01 << 6)){
 
     print_string("Vent angle changed ");
     //printTime();
@@ -302,6 +312,26 @@ void led_toggle(){
   }
 }
 
+/*
+void toggle_fan(bool condition){
+  if(isOn == True){
+    // 
+    // Assume speed is built in. Othwerise have to use analog to set spee
+  }
+}
+*/
+
+void toggle_water_sensor(){
+  // Hopefully cutting off power supply won't break the arduino if it's trying to read data from the senosr
+  *pin_f &= ~(0x01 << 2);
+}
+
+
+
+
+
+
+
 void display_LCD(float top, float bottom){
   lcd.setCursor(0,0);
   lcd.print("Hum: ");
@@ -326,7 +356,7 @@ bool reset_button(){
 bool stop_button(){
 
   // Button
-  if((*pin_k & (0x01 << 6)){
+  if(*pin_k & (0x01 << 6)){
     // Pressed
     return true;
   }
