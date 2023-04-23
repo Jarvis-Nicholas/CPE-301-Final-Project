@@ -4,6 +4,15 @@ Purpose: Final Project Swamp Cooler
 Date: 4/20/2023
 */
 
+/*
+use ISR interrupt as stated in rubric
+check pin values match physical pins
+check state conditions with rubric
+check print time works
+
+*/
+
+
 
 // Download RTClib by Adafruit
 // Download DHTLib by Rob Tillaart
@@ -12,7 +21,7 @@ Date: 4/20/2023
 #include "RTClib.h"
 #include <Stepper.h>
 #include <LiquidCrystal.h>
-#include <dht.h>
+#include "dht.h"
 
 // Function declarations
 void disabled();
@@ -41,11 +50,17 @@ volatile unsigned int  *myUBRR0  = (unsigned int *) 0x00C4; // Baud Rate
 volatile unsigned char *myUDR0   = (unsigned char *)0x00C6; // I/O Data Register (this is the value sent to the terminal. This may be used to create different characters)
 #define TBE 0x20 // Bit 5 (status bit)
 
-// Stepper Motor button??
-// (PE3, 5)
-volatile unsigned char *pin_e = (unsigned char *) 0x20;
-volatile unsigned char *ddr_e = (unsigned char *) 0x21;
-volatile unsigned char *port_e = (unsigned char *) 0x22;
+// LEDs  (PK0, PK1, PK2, PK3; Pin A10, Pin A9, Pin A11, Pin A8)
+// Buttons (Pk4, PK5, PK6; Pin A12, Pin A13, Pin A14)
+volatile unsigned char* port_k = (unsigned char*) 0x108;
+volatile unsigned char* ddr_k = (unsigned char*) 0x107;
+volatile unsigned char* pin_k = (unsigned char*) 0x106;
+
+// (PB7, PB6; Pin 13, Pin 12)
+volatile unsigned char *pin_b = (unsigned char *) 0x23;
+volatile unsigned char *ddr_b = (unsigned char *) 0x24;
+volatile unsigned char *port_b = (unsigned char *) 0x25;
+
 
 // Analog
 volatile unsigned char* my_ADMUX = (unsigned char*) 0x7C;
@@ -53,9 +68,12 @@ volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
 volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
 volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
+
+
+
 // Stepper motor
 const int stepsPerRevolution = 2038;
-Stepper my_stepper = Stepper(stepsPerRevolution, 7, 5 ,6, 4);
+Stepper my_stepper = Stepper(stepsPerRevolution, 52, 50, 48, 46);
 
 
 
@@ -66,7 +84,8 @@ RTC_DS1307 rtc;
 LiquidCrystal lcd(8, 7, 6, 5, 4, 3);
 
 // DHT
-DHT dht(2, DHT11);
+dht DHT;
+//DHT dht(2, DHT11);
 
 // char for printing purposes
 unsigned char state;
@@ -83,11 +102,19 @@ void setup() {
   // Set up stepper motor
   my_stepper.setSpeed(5);
 
+  // LEDs in output mode
+  *ddr_k |= 0b00001111;
 
-  // Stepper button?? (input mode)??
-  *ddr_e &= ~(0x01 << 2);
+  // Buttons in input mode
+  *ddr_k &= 0b11100000;
 
-  /*
+
+  // DHT
+  int chk = DHT.read11(2);  
+
+
+
+  
   if(! rtc.begin()){
     print_string("Couldn't find RTC1");
     while(1);
@@ -97,9 +124,7 @@ void setup() {
     print_string("RTC is NOT running!");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
-  */
-
-
+  
 }
 
 void loop() {
@@ -124,7 +149,7 @@ void loop() {
   }
 */
   print_time();
-  change_state('1');
+  //change_state('1');
 }
 
 
@@ -164,10 +189,11 @@ void print_time(){
 }
 
 // Change Stepper motor direction
+// Fix pins
 void change_stepper_direction(){
 
   // Wait for button input??
-  if((*pin_e & 0b00000010) == 0b00000010){
+  if((*pin_k & (0x01 << 6)){
 
     print_string("Vent angle changed ");
     //printTime();
@@ -245,18 +271,33 @@ bool check_water_level(){
 }
 
 void led_toggle(){
+
+
+  // Turn all off
+  *port_k |= 0b00000000;
+
+  // Turn on
   switch(state){
+
+    // Disabled - Yellow
     case '0':
-    
+      *port_k |= 0b00000010;
     break;
+
+    // Idle - Green
     case '1':
-    
+    // LED on
+      *port_k |= 0b00001000;
     break;
+
+    // Running - Blue
     case '2':
-    
+      *port_k |= 0b00000001;
     break;
+
+    // Error - Red
     case '3':
-    
+      *port_k |= 0b00000100;
     break;    
   }
 }
@@ -274,8 +315,7 @@ void display_LCD(float top, float bottom){
 bool reset_button(){
 
   // Button
-  if((*pinb & 0b00000001) == 0b00000001)
-  {
+  if(*pin_k & (0x01 << 7)){
     // Pressed
     return true;
   }
@@ -286,8 +326,7 @@ bool reset_button(){
 bool stop_button(){
 
   // Button
-  if((*pinb & 0b00000010) == 0b00000010)
-  {
+  if((*pin_k & (0x01 << 6)){
     // Pressed
     return true;
   }
@@ -329,8 +368,6 @@ void print_string(String input){
     print_char(input[i]);
   }
 }
-
-
 
 ISR(TIMER1_OVF_vect){
   state = 1;
