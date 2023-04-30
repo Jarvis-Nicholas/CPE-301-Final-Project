@@ -11,8 +11,17 @@ check state conditions with rubric
 check print time works
 check ddr binary math (does equal delete old values)
 can we use delay?? MOST LIKELY NOT
+does stepper motor rotate correctly
 */
 
+/*IMMEDIATE
+make homemade interrupt using ISR and replace delay calls
+what does tempertaure_timer do?
+check_temp why 19?
+does toggle_fan need to use analog??
+change_stepper_direction what port to use??
+set_up lcd.begin why 16 and 2??
+*/
 
 
 // Download RTClib by Adafruit
@@ -24,22 +33,31 @@ can we use delay?? MOST LIKELY NOT
 #include <LiquidCrystal.h>
 #include "dht.h"
 
-// Function declarations
+// States
 void disabled();
 void idle();
 void running();
 void error();
 void change_state(unsigned char);
-void print_time();
-void change_stepper_direction();
+
+// Analog
 void adc_init();
 unsigned int adc_read(unsigned char);
+
+// Devices
+void change_stepper_direction();
 bool check_water_level();
-void led_toggle();
+bool check_temp();
 void toggle_fan(bool);
 void display_LCD(float, float);
+
+// Breadboard Utility
 bool reset_button();
 bool stop_button();
+void led_toggle();
+
+// Terminal Display
+void print_time();
 void U0init(unsigned long);
 void print_char(unsigned char);
 void print_string(String);
@@ -58,7 +76,7 @@ volatile unsigned char* port_k = (unsigned char*) 0x108;
 volatile unsigned char* ddr_k = (unsigned char*) 0x107;
 volatile unsigned char* pin_k = (unsigned char*) 0x106;
 
-// Fan Motor (PF0, PF1; A0, A1)
+// Fan Motor (PF0, PF1, PF4; A0, A1, A4) (speed pin is A4)
 // Water Sensor (PF2, PF3; A2, A3)
 volatile unsigned char *port_f = (unsigned char *) 0x31;
 volatile unsigned char *ddr_f = (unsigned char *) 0x30;
@@ -71,13 +89,9 @@ volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
 volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
 
-
-
 // Stepper motor
 const int stepsPerRevolution = 2038;
 Stepper my_stepper = Stepper(stepsPerRevolution, 52, 50, 48, 46);
-
-
 
 // Real time clock
 RTC_DS1307 rtc;
@@ -92,17 +106,14 @@ dht DHT;
 // char for printing purposes
 unsigned char state;
 
+// Counter for temperature
+unsigned int temperature_timer;
+
 void setup() {
 
   // Initially off
   state = '0';
-  U0init(9600);
-
-  // Set up analog
-  adc_init();
-
-  // Set up stepper motor
-  my_stepper.setSpeed(5);
+  temperature_timer = 6000;
 
   // LEDs in output mode
   *ddr_k |= 0b00001111;
@@ -111,38 +122,51 @@ void setup() {
   *ddr_k &= 0b01110000;
 
   // Water Sensor power pin in output mode
-  // Fan in output mode
-  *ddr_f |= 0b00000111;
-
+  // Fan in output mode (pre adding A4)
+  //*ddr_f |= 0b00000111;
+  *ddr_f |= 0b00010111;
 
   // Water Sensor data pin in input mode
-  *ddr_k &= ~(0x01 << 3);
+  //*ddr_k &= ~(0x01 << 3);
+  *ddr_f &= ~(0x01 << 3);
 
 
-  // DHT
-  int chk = DHT.read11(2);  
+  U0init(9600);
+
+  // Set up analog
+  adc_init();
+
+  // Set up stepper motor
+  my_stepper.setSpeed(5);  
 
 
-
-  
-  if(! rtc.begin()){
+  if(rtc.begin() == false){
     print_string("Couldn't find RTC1");
     while(1);
   }
 
-  if(! rtc.isrunning()){
+  if(rtc.isrunning() == false){
     print_string("RTC is NOT running!");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
+
+  // DHT
+  int chk = DHT.read11(2);  
+  //dht.begin();
   
+  lcd.begin(16, 2);
+
+  // Fan starts off
+  // needed???
+  *port_f &= 0b11111110;
+
 }
 
 void loop() {
 
-
   // LED starts on
-  // led_toggle();
-/*
+  led_toggle();
+
   switch(state){
     case '0':
       disabled();
@@ -157,11 +181,163 @@ void loop() {
       error();
     break;    
   }
-*/
-  print_time();
+
+  //print_time();
   //change_state('1');
 }
 
+
+void disabled(){
+  // Stays disabled
+  while (state == '0'){
+
+    // Change to idle
+    if (reset_button() == true){
+      state = 1;
+    }
+    // Delay to wait
+    if (state == '0'){
+      delay(10);
+    }
+  }
+}
+
+void idle(){
+  // Stay idle
+  while (state == '1'){
+    // Increment timer
+    temperature_timer++;
+
+    // Change vent angle
+    change_stepper_direction();
+
+    // Check temperature per minute
+    if (temperature_timer >= 6000){
+      // High enough temp
+      if (check_temp() == true){
+        // Change to running
+        change_state('2');
+      }
+      // Reset timer
+      temperature_timer = 0;
+    }
+
+    // Check water level
+    if (check_water_level() == true){
+      
+      // Change to error state
+      change_state('3');
+    }
+
+    // Check stop button
+    if (stop_button() == true){
+      toggle_fan(false);
+
+      // Change to disabled
+      change_state('0');
+    }
+
+    // Delay
+    if (state == '1'){
+      delay(10);
+    }
+  }
+}
+
+void running(){
+  // Fan on
+  toggle_fan(true);
+
+  // Stay in running
+  while (state == '2'){
+    // Increment timer
+    temperature_timer++;
+
+    // Change vent angle
+    change_stepper_direction();
+
+    // check temp per minute
+    if (temperature_timer >= 6000){
+
+      // Low temperature
+      if (check_temp() == false){
+        
+        // Change to idle
+        toggle_fan(false);
+        change_state('1');
+      }
+      temperature_timer = 0;
+    }
+    // Check water level
+    if (check_water_level() == true){
+      
+      // Change to error 
+      toggle_fan(false);
+      change_state('3');
+    }
+
+    // Check stop button
+    if (stop_button() == true){
+      
+      // Change to disabled
+      toggle_fan(false);
+      change_state('0');
+    }
+
+    // Delay
+    if (state == '2'){
+      delay(10);
+    }
+  }
+}
+
+void error(){
+  // Fan off
+  toggle_fan(false);
+
+  // Error LCD display
+  lcd.setCursor(0,0);
+  lcd.print("ERROR:    ");
+  lcd.setCursor(0,1);
+  lcd.print("Water low    ");
+
+  // Say in error
+  while (state == '3'){
+    // Increment timer
+    temperature_timer++;
+
+    // Check vent angle
+    change_stepper_direction();
+
+    // Check temp per minute
+    if (temperature_timer >= 6000){
+
+      // Don't need return. ONLY want to display temp values
+      check_temp();
+      temperature_timer = 0;
+    }
+
+    // Check reset button and water level
+    if (reset_button() == true && check_water_level() == false){
+      // Change to idle
+      change_state('1');
+    }
+
+    // Check stop button
+    if (stop_button() == true){
+      
+      // Change to disabled
+      toggle_fan(false);
+      change_state('0');
+    }
+
+    // Delay
+    if (state == '3'){
+      delay(10);
+    }
+
+  }
+}
 
 void change_state(unsigned char new_state){
 
@@ -174,13 +350,12 @@ void change_state(unsigned char new_state){
     print_char('\n');
 
     // Print time
-    //print_time();
+    print_time();
     
     // Toggle light
-    // led_toggle(state);
+    led_toggle();
   }
 }
-
 
 void print_time(){
 
@@ -209,7 +384,7 @@ void change_stepper_direction(){
     //printTime();
 
     // Change direction
-    //my_stepper.step(-stepsPerRevolution);
+    my_stepper.step(-stepsPerRevolution);
 
     // Rotate Direction in increments of 5
     my_stepper.step(5);
@@ -280,8 +455,24 @@ bool check_water_level(){
   return false;
 }
 
-void led_toggle(){
+bool check_temp(){
+  //float humidity = DHT.humidity;
+  //float temperature = DHT.temperature;
 
+  // Display
+  //display_LCD(humidity, temperature);
+  display_LCD(DHT.humidity, DHT.temperature);
+
+  //if (temperature > 19){
+  if (DHT.temperature > 19){
+    return true;
+  }
+  else{
+    return false;
+  }
+}
+
+void led_toggle(){
 
   // Turn all off
   *port_k |= 0b00000000;
@@ -312,25 +503,27 @@ void led_toggle(){
   }
 }
 
-/*
-void toggle_fan(bool condition){
-  if(isOn == True){
-    // 
-    // Assume speed is built in. Othwerise have to use analog to set spee
+
+void toggle_fan(bool already_on){
+  // On -> off
+  if(already_on== true){
+    
+    // Assume speed is built in. Othwerise have to use analog to set speed
+    // Only need to turn on of the pins on / off?
+    *port_f |= 0b00000001;
+  }
+
+  // Off -> on
+  else{
+    *port_f &= 0b11111110;
   }
 }
-*/
+
 
 void toggle_water_sensor(){
   // Hopefully cutting off power supply won't break the arduino if it's trying to read data from the senosr
   *pin_f &= ~(0x01 << 2);
 }
-
-
-
-
-
-
 
 void display_LCD(float top, float bottom){
   lcd.setCursor(0,0);
@@ -340,7 +533,6 @@ void display_LCD(float top, float bottom){
   lcd.print("Temp: ");
   lcd.print(bottom);
 }
-
 
 bool reset_button(){
 
@@ -365,7 +557,6 @@ bool stop_button(){
   return false;
 }
 
-
 // function to initialize USART0 to "int" Baud, 8 data bits, no parity, and one stop bit. Assume FCPU = 16MHz.
 // Allows for terminal output
 void U0init(unsigned long U0baud){
@@ -382,7 +573,6 @@ void U0init(unsigned long U0baud){
 
 
 // Wait for USART0 TBE to be set (1) then write character to transmit buffer
-// Print char
 void print_char(unsigned char c){
 
   // Loop until TBE flag (bit 5) == 1 -> (AND makes 1)
