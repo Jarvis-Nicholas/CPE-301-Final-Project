@@ -5,22 +5,18 @@ Date: 4/20/2023
 */
 
 /*
-use ISR interrupt as stated in rubric
-  check pin values match physical pins
 check state conditions with rubric
-check print time works
-check ddr binary math (does equal delete old values)
-can we use delay?? MOST LIKELY NOT
 does stepper motor rotate correctly
 */
 
 /*IMMEDIATE
+CHECK BUTTONS ARE PROPERLY PLUGGED INTO POWER
 make homemade interrupt using ISR and replace delay calls
-what does tempertaure_timer do?
+IS temperature timer needed??
 check_temp why 19?
 does toggle_fan need to use analog??
 change_stepper_direction what port to use??
-set_up lcd.begin why 16 and 2??
+
 */
 
 
@@ -91,7 +87,7 @@ volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
 // Stepper motor
 const int stepsPerRevolution = 2038;
-Stepper my_stepper = Stepper(stepsPerRevolution, 52, 50, 48, 46);
+Stepper my_stepper = Stepper(stepsPerRevolution, 52, 48, 50, 46);
 
 // Real time clock
 RTC_DS1307 rtc;
@@ -115,6 +111,33 @@ void setup() {
   state = '0';
   temperature_timer = 6000;
 
+
+  //Serial.begin(9600);
+  U0init(9600);
+  //while(!Serial);
+  
+
+
+  rtc.begin();
+
+
+
+
+
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  
+  // Set up analog
+  adc_init();
+
+  // Set up stepper motor
+  my_stepper.setSpeed(200);  
+
+  // DHT
+  int chk = DHT.read11(2);  
+  //dht.begin();
+  
+  lcd.begin(16, 2);
+  
   // LEDs in output mode
   *ddr_k |= 0b00001111;
 
@@ -130,31 +153,6 @@ void setup() {
   //*ddr_k &= ~(0x01 << 3);
   *ddr_f &= ~(0x01 << 3);
 
-
-  U0init(9600);
-
-  // Set up analog
-  adc_init();
-
-  // Set up stepper motor
-  my_stepper.setSpeed(5);  
-
-
-  if(rtc.begin() == false){
-    print_string("Couldn't find RTC1");
-    while(1);
-  }
-
-  if(rtc.isrunning() == false){
-    print_string("RTC is NOT running!");
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  }
-
-  // DHT
-  int chk = DHT.read11(2);  
-  //dht.begin();
-  
-  lcd.begin(16, 2);
 
   // Fan starts off
   // needed???
@@ -190,21 +188,24 @@ void loop() {
 void disabled(){
   // Stays disabled
   while (state == '0'){
-
     // Change to idle
     if (reset_button() == true){
-      state = 1;
+      change_state('1');
     }
+
     // Delay to wait
-    if (state == '0'){
-      delay(10);
-    }
+    /*if (state == '0'){
+      Serial.println("0");
+      delay(1000);
+    }*/
+    
   }
 }
 
 void idle(){
   // Stay idle
   while (state == '1'){
+    //Serial.println("hi");
     // Increment timer
     temperature_timer++;
 
@@ -216,13 +217,16 @@ void idle(){
       // High enough temp
       if (check_temp() == true){
         // Change to running
+        // KEEP THE CHANGE STATE
         change_state('2');
       }
+
       // Reset timer
       temperature_timer = 0;
     }
 
     // Check water level
+    /*
     if (check_water_level() == true){
       
       // Change to error state
@@ -232,15 +236,16 @@ void idle(){
     // Check stop button
     if (stop_button() == true){
       toggle_fan(false);
-
+        Serial.println("hi");
       // Change to disabled
       change_state('0');
     }
 
     // Delay
-    if (state == '1'){
-      delay(10);
-    }
+    //if (state == '1'){
+      //delay(1000);
+    //}
+    */
   }
 }
 
@@ -286,7 +291,7 @@ void running(){
 
     // Delay
     if (state == '2'){
-      delay(10);
+      //delay(10);
     }
   }
 }
@@ -333,27 +338,27 @@ void error(){
 
     // Delay
     if (state == '3'){
-      delay(10);
+      //delay(10);
     }
-
   }
 }
 
 void change_state(unsigned char new_state){
 
   if(state != new_state){
-    state = new_state;
 
     // State change print message
     print_string("State changed to: ");
-    print_char(state);
-    print_char('\n');
+    print_char(new_state);
+    print_char(' ');
 
     // Print time
     print_time();
     
     // Toggle light
     led_toggle();
+
+    state = new_state;
   }
 }
 
@@ -366,9 +371,7 @@ void print_time(){
   char buf[] = "hh:mm:ss";
   print_string("at ");
   print_string(current_time.toString(buf));
-  print_string(":");
 
-  print_string(":");
   print_char('\n');
   delay(1000);
 }
@@ -390,9 +393,6 @@ void change_stepper_direction(){
     my_stepper.step(5);
   }
 }
-
-
-
 
 // Analog setup
 void adc_init(){
@@ -475,7 +475,7 @@ bool check_temp(){
 void led_toggle(){
 
   // Turn all off
-  *port_k |= 0b00000000;
+  *port_k &= 0b00000000;
 
   // Turn on
   switch(state){
@@ -537,18 +537,23 @@ void display_LCD(float top, float bottom){
 bool reset_button(){
 
   // Button
-  if(*pin_k & (0x01 << 7)){
+  //if(*pin_k & (0x01 << 4)){
+    if(*pin_k & (0x01 << 5)){
     // Pressed
+    Serial.println("hi");
     return true;
   }
-  // Not pressed
-  return false;
+  else{
+    // Not pressed
+    return false;
+  }
 }
 
 bool stop_button(){
 
   // Button
-  if(*pin_k & (0x01 << 6)){
+  //if(*pin_k & (0x01 << 5)){
+    if(*pin_k & (0x01 << 4)){
     // Pressed
     return true;
   }
@@ -589,6 +594,7 @@ void print_string(String input){
   }
 }
 
-ISR(TIMER1_OVF_vect){
-  state = 1;
+/*ISR(TIMER1_OVF_vect){
+  change_state('1');
 }
+*/
