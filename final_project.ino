@@ -19,11 +19,16 @@ change_stepper_direction what port to use??
 
 */
 
+/*
+Stepper motor gets power but is hard to notice its movement
+
+*/
+
 
 // Download RTClib by Adafruit
 // Download DHTLib by Rob Tillaart
 // Download LiquidCrystal by Arduino, Adafruit
-//#include <Wire.h>
+#include <Wire.h>
 #include "RTClib.h"
 #include <Stepper.h>
 #include <LiquidCrystal.h>
@@ -103,14 +108,12 @@ dht DHT;
 unsigned char state;
 
 // Counter for temperature
-unsigned int temperature_timer;
+//unsigned int temperature_timer;
 
 void setup() {
 
   // Initially off
   state = '0';
-  temperature_timer = 6000;
-
 
   //Serial.begin(9600);
   U0init(9600);
@@ -157,7 +160,6 @@ void setup() {
   // Fan starts off
   // needed???
   *port_f &= 0b11111110;
-
 }
 
 void loop() {
@@ -205,25 +207,19 @@ void disabled(){
 void idle(){
   // Stay idle
   while (state == '1'){
-    //Serial.println("hi");
-    // Increment timer
-    temperature_timer++;
+
 
     // Change vent angle
     change_stepper_direction();
 
     // Check temperature per minute
-    if (temperature_timer >= 6000){
+
       // High enough temp
       if (check_temp() == true){
         // Change to running
         // KEEP THE CHANGE STATE
         change_state('2');
       }
-
-      // Reset timer
-      temperature_timer = 0;
-    }
 
     // Check water level
     /*
@@ -255,24 +251,20 @@ void running(){
 
   // Stay in running
   while (state == '2'){
-    // Increment timer
-    temperature_timer++;
 
     // Change vent angle
     change_stepper_direction();
 
-    // check temp per minute
-    if (temperature_timer >= 6000){
 
-      // Low temperature
-      if (check_temp() == false){
-        
-        // Change to idle
-        toggle_fan(false);
-        change_state('1');
-      }
-      temperature_timer = 0;
+
+    // Low temperature
+    if (check_temp() == false){
+      // Change to idle
+      toggle_fan(false);
+      change_state('1');
     }
+
+    /*
     // Check water level
     if (check_water_level() == true){
       
@@ -293,6 +285,7 @@ void running(){
     if (state == '2'){
       //delay(10);
     }
+    */
   }
 }
 
@@ -308,20 +301,14 @@ void error(){
 
   // Say in error
   while (state == '3'){
-    // Increment timer
-    temperature_timer++;
 
     // Check vent angle
     change_stepper_direction();
 
-    // Check temp per minute
-    if (temperature_timer >= 6000){
-
-      // Don't need return. ONLY want to display temp values
-      check_temp();
-      temperature_timer = 0;
-    }
-
+    // Check temp
+    // Don't need return. ONLY want to display temp values
+    check_temp();
+    
     // Check reset button and water level
     if (reset_button() == true && check_water_level() == false){
       // Change to idle
@@ -373,24 +360,24 @@ void print_time(){
   print_string(current_time.toString(buf));
 
   print_char('\n');
-  delay(1000);
+  //delay(1000);
 }
 
 // Change Stepper motor direction
 // Fix pins
 void change_stepper_direction(){
 
-  // Wait for button input??
+  // Hold down button to adjust direction
   if(*pin_k & (0x01 << 6)){
 
     print_string("Vent angle changed ");
     //printTime();
 
     // Change direction
-    my_stepper.step(-stepsPerRevolution);
+    //my_stepper.step(-stepsPerRevolution);
 
     // Rotate Direction in increments of 5
-    my_stepper.step(5);
+    my_stepper.step(45);
   }
 }
 
@@ -463,7 +450,6 @@ bool check_temp(){
   //display_LCD(humidity, temperature);
   display_LCD(DHT.humidity, DHT.temperature);
 
-  //if (temperature > 19){
   if (DHT.temperature > 19){
     return true;
   }
@@ -504,18 +490,20 @@ void led_toggle(){
 }
 
 
-void toggle_fan(bool already_on){
+void toggle_fan(bool on){
   // On -> off
-  if(already_on== true){
-    
+  if(on == true){
+    Serial.println("true");
     // Assume speed is built in. Othwerise have to use analog to set speed
     // Only need to turn on of the pins on / off?
-    *port_f |= 0b00000001;
+    //*port_f |= 0b00000001;
+    *port_f |= 0b00010010;
   }
 
   // Off -> on
   else{
-    *port_f &= 0b11111110;
+    Serial.println("false");
+    *port_f &= 0b11101111;
   }
 }
 
@@ -537,10 +525,8 @@ void display_LCD(float top, float bottom){
 bool reset_button(){
 
   // Button
-  //if(*pin_k & (0x01 << 4)){
     if(*pin_k & (0x01 << 5)){
     // Pressed
-    Serial.println("hi");
     return true;
   }
   else{
@@ -552,7 +538,6 @@ bool reset_button(){
 bool stop_button(){
 
   // Button
-  //if(*pin_k & (0x01 << 5)){
     if(*pin_k & (0x01 << 4)){
     // Pressed
     return true;
