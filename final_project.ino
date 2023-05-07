@@ -4,27 +4,6 @@ Purpose: Final Project Swamp Cooler
 Date: 4/20/2023
 */
 
-/*
-check state conditions with rubric
-does stepper motor rotate correctly
-*/
-
-/*IMMEDIATE
-CHECK BUTTONS ARE PROPERLY PLUGGED INTO POWER
-make homemade interrupt using ISR and replace delay calls
-IS temperature timer needed??
-check_temp why 19?
-does toggle_fan need to use analog??
-change_stepper_direction what port to use??
-
-*/
-
-/*
-Stepper motor gets power but is hard to notice its movement
-
-*/
-
-
 // Download RTClib by Adafruit
 // Download DHTLib by Rob Tillaart
 // Download LiquidCrystal by Arduino, Adafruit
@@ -89,7 +68,6 @@ volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
 volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
 volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
-
 // Stepper motor
 const int stepsPerRevolution = 2038;
 Stepper my_stepper = Stepper(stepsPerRevolution, 52, 48, 50, 46);
@@ -102,31 +80,17 @@ LiquidCrystal lcd(8, 7, 6, 5, 4, 3);
 
 // DHT
 dht DHT;
-//DHT dht(2, DHT11);
 
 // char for printing purposes
 unsigned char state;
 
-// Counter for temperature
-//unsigned int temperature_timer;
-
 void setup() {
-
   // Initially off
   state = '0';
 
-  //Serial.begin(9600);
   U0init(9600);
-  //while(!Serial);
   
-
-
   rtc.begin();
-
-
-
-
-
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   
   // Set up analog
@@ -137,7 +101,6 @@ void setup() {
 
   // DHT
   int chk = DHT.read11(2);  
-  //dht.begin();
   
   lcd.begin(16, 2);
   
@@ -149,16 +112,12 @@ void setup() {
 
   // Water Sensor power pin in output mode
   // Fan in output mode (pre adding A4)
-  //*ddr_f |= 0b00000111;
   *ddr_f |= 0b00010111;
 
   // Water Sensor data pin in input mode
-  //*ddr_k &= ~(0x01 << 3);
   *ddr_f &= ~(0x01 << 3);
 
-
   // Fan starts off
-  // needed???
   *port_f &= 0b11111110;
 }
 
@@ -181,33 +140,28 @@ void loop() {
       error();
     break;    
   }
-
-  //print_time();
-  //change_state('1');
 }
 
-
 void disabled(){
+  // No display
+  lcd.clear();
+
   // Stays disabled
   while (state == '0'){
+
     // Change to idle
     if (reset_button() == true){
       change_state('1');
     }
-
-    // Delay to wait
-    /*if (state == '0'){
-      Serial.println("0");
-      delay(1000);
-    }*/
-    
   }
 }
 
 void idle(){
+  // Fan always off
+  toggle_fan(false);
+
   // Stay idle
   while (state == '1'){
-
 
     // Change vent angle
     change_stepper_direction();
@@ -217,22 +171,20 @@ void idle(){
       // High enough temp
       if (check_temp() == true){
         // Change to running
-        // KEEP THE CHANGE STATE
         change_state('2');
       }
 
     // Check water level
-    /*
     if (check_water_level() == true){
-      
       // Change to error state
       change_state('3');
     }
 
     // Check stop button
     if (stop_button() == true){
+      // Fan off
       toggle_fan(false);
-        Serial.println("hi");
+
       // Change to disabled
       change_state('0');
     }
@@ -241,7 +193,6 @@ void idle(){
     //if (state == '1'){
       //delay(1000);
     //}
-    */
   }
 }
 
@@ -256,7 +207,6 @@ void running(){
     change_stepper_direction();
 
 
-
     // Low temperature
     if (check_temp() == false){
       // Change to idle
@@ -264,10 +214,9 @@ void running(){
       change_state('1');
     }
 
-    /*
+    
     // Check water level
     if (check_water_level() == true){
-      
       // Change to error 
       toggle_fan(false);
       change_state('3');
@@ -275,13 +224,13 @@ void running(){
 
     // Check stop button
     if (stop_button() == true){
-      
       // Change to disabled
       toggle_fan(false);
       change_state('0');
     }
 
     // Delay
+    /*
     if (state == '2'){
       //delay(10);
     }
@@ -304,10 +253,6 @@ void error(){
 
     // Check vent angle
     change_stepper_direction();
-
-    // Check temp
-    // Don't need return. ONLY want to display temp values
-    check_temp();
     
     // Check reset button and water level
     if (reset_button() == true && check_water_level() == false){
@@ -324,9 +269,9 @@ void error(){
     }
 
     // Delay
-    if (state == '3'){
+    //if (state == '3'){
       //delay(10);
-    }
+    //}
   }
 }
 
@@ -370,7 +315,8 @@ void change_stepper_direction(){
   // Hold down button to adjust direction
   if(*pin_k & (0x01 << 6)){
 
-    print_string("Vent angle changed ");
+    print_string("Vent angle changed");
+    print_char('\n');
     //printTime();
 
     // Change direction
@@ -431,13 +377,17 @@ unsigned int adc_read(unsigned char adc_channel_num){
 
 bool check_water_level(){
 
-  // If water level < 130
-  if(adc_read(0) < 130){
+  *port_f |= (0x01 << 2);
 
+  unsigned volatile level = adc_read(3);
+  *port_f &= ~(0x01 << 2);
+
+  // Too low of water level
+  if(level < 104){
     // Too low
     return true;
   }
-
+  
   // Not low
   return false;
 }
@@ -489,11 +439,9 @@ void led_toggle(){
   }
 }
 
-
 void toggle_fan(bool on){
   // On -> off
   if(on == true){
-    Serial.println("true");
     // Assume speed is built in. Othwerise have to use analog to set speed
     // Only need to turn on of the pins on / off?
     //*port_f |= 0b00000001;
@@ -502,15 +450,8 @@ void toggle_fan(bool on){
 
   // Off -> on
   else{
-    Serial.println("false");
     *port_f &= 0b11101111;
   }
-}
-
-
-void toggle_water_sensor(){
-  // Hopefully cutting off power supply won't break the arduino if it's trying to read data from the senosr
-  *pin_f &= ~(0x01 << 2);
 }
 
 void display_LCD(float top, float bottom){
@@ -561,7 +502,6 @@ void U0init(unsigned long U0baud){
  *myUBRR0  = tbaud;
 }
 
-
 // Wait for USART0 TBE to be set (1) then write character to transmit buffer
 void print_char(unsigned char c){
 
@@ -578,8 +518,3 @@ void print_string(String input){
     print_char(input[i]);
   }
 }
-
-/*ISR(TIMER1_OVF_vect){
-  change_state('1');
-}
-*/
