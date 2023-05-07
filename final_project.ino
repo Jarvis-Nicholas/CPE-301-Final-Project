@@ -157,6 +157,7 @@ void disabled(){
 }
 
 void idle(){
+
   // Fan always off
   toggle_fan(false);
 
@@ -166,37 +167,34 @@ void idle(){
     // Change vent angle
     change_stepper_direction();
 
-    // Check temperature per minute
-
       // High enough temp
       if (check_temp() == true){
+
         // Change to running
         change_state('2');
       }
 
     // Check water level
     if (check_water_level() == true){
+
       // Change to error state
       change_state('3');
     }
 
     // Check stop button
     if (stop_button() == true){
+
       // Fan off
       toggle_fan(false);
 
       // Change to disabled
       change_state('0');
     }
-
-    // Delay
-    //if (state == '1'){
-      //delay(1000);
-    //}
   }
 }
 
 void running(){
+
   // Fan on
   toggle_fan(true);
 
@@ -206,17 +204,17 @@ void running(){
     // Change vent angle
     change_stepper_direction();
 
-
     // Low temperature
     if (check_temp() == false){
+
       // Change to idle
       toggle_fan(false);
       change_state('1');
     }
 
-    
     // Check water level
     if (check_water_level() == true){
+
       // Change to error 
       toggle_fan(false);
       change_state('3');
@@ -224,21 +222,16 @@ void running(){
 
     // Check stop button
     if (stop_button() == true){
+
       // Change to disabled
       toggle_fan(false);
       change_state('0');
     }
-
-    // Delay
-    /*
-    if (state == '2'){
-      //delay(10);
-    }
-    */
   }
 }
 
 void error(){
+
   // Fan off
   toggle_fan(false);
 
@@ -248,7 +241,7 @@ void error(){
   lcd.setCursor(0,1);
   lcd.print("Water low    ");
 
-  // Say in error
+  // Stay in error
   while (state == '3'){
 
     // Check vent angle
@@ -256,6 +249,7 @@ void error(){
     
     // Check reset button and water level
     if (reset_button() == true && check_water_level() == false){
+
       // Change to idle
       change_state('1');
     }
@@ -267,11 +261,6 @@ void error(){
       toggle_fan(false);
       change_state('0');
     }
-
-    // Delay
-    //if (state == '3'){
-      //delay(10);
-    //}
   }
 }
 
@@ -305,11 +294,8 @@ void print_time(){
   print_string(current_time.toString(buf));
 
   print_char('\n');
-  //delay(1000);
 }
 
-// Change Stepper motor direction
-// Fix pins
 void change_stepper_direction(){
 
   // Hold down button to adjust direction
@@ -317,12 +303,8 @@ void change_stepper_direction(){
 
     print_string("Vent angle changed");
     print_char('\n');
-    //printTime();
 
-    // Change direction
-    //my_stepper.step(-stepsPerRevolution);
-
-    // Rotate Direction in increments of 5
+    // Rotate Direction in increments
     my_stepper.step(45);
   }
 }
@@ -377,13 +359,18 @@ unsigned int adc_read(unsigned char adc_channel_num){
 
 bool check_water_level(){
 
+  // Turn power on
   *port_f |= (0x01 << 2);
 
+  // Read
   unsigned volatile level = adc_read(3);
+
+  // Turn power off
   *port_f &= ~(0x01 << 2);
 
   // Too low of water level
-  if(level < 104){
+  if(level <= 104){
+
     // Too low
     return true;
   }
@@ -393,11 +380,8 @@ bool check_water_level(){
 }
 
 bool check_temp(){
-  //float humidity = DHT.humidity;
-  //float temperature = DHT.temperature;
 
   // Display
-  //display_LCD(humidity, temperature);
   display_LCD(DHT.humidity, DHT.temperature);
 
   if (DHT.temperature > 19){
@@ -442,9 +426,6 @@ void led_toggle(){
 void toggle_fan(bool on){
   // On -> off
   if(on == true){
-    // Assume speed is built in. Othwerise have to use analog to set speed
-    // Only need to turn on of the pins on / off?
-    //*port_f |= 0b00000001;
     *port_f |= 0b00010010;
   }
 
@@ -480,6 +461,7 @@ bool stop_button(){
 
   // Button
     if(*pin_k & (0x01 << 4)){
+      
     // Pressed
     return true;
   }
